@@ -262,8 +262,9 @@ u8 run_target(char** argv, u32 timeout) {
    is unlinked and a new one is created. Otherwise, out_fd is rewound and
    truncated. */
 
-void write_to_testcase(void* mem, u32 len) {
+u8 write_to_testcase(void* mem, u32 len) {
 
+  u8 result = 0;
   s32 fd = out_fd;
 
 #ifdef _AFL_DOCUMENT_MUTATIONS
@@ -309,7 +310,10 @@ void write_to_testcase(void* mem, u32 len) {
 
     u8*    new_data;
     size_t new_size = pre_save_handler(mem, len, &new_data);
-    ck_write(fd, new_data, new_size, out_file);
+    if (!new_size || !new_data) {
+      result = 1;
+    } else
+      ck_write(fd, new_data, new_size, out_file);
 
   } else {
 
@@ -326,11 +330,22 @@ void write_to_testcase(void* mem, u32 len) {
 
     close(fd);
 
+  return result;
+
 }
 
 /* The same, but with an adjustable gap. Used for trimming. */
 
-void write_with_gap(void* mem, u32 len, u32 skip_at, u32 skip_len) {
+u8 write_with_gap(void* mem, u32 len, u32 skip_at, u32 skip_len) {
+
+  if (pre_save_handler) {
+    u8* trimmed = ck_alloc_nozero(len - skip_len);
+    memcpy(trimmed, mem, skip_at);
+    memcpy(trimmed + skip_at, mem + skip_at + skip_len, len - skip_at - skip_len);
+    u8 result = write_to_testcase(trimmed, len - skip_len);
+    ck_free(trimmed);
+    return result;
+  }
 
   s32 fd = out_fd;
   u32 tail_len = len - skip_at - skip_len;
@@ -367,6 +382,8 @@ void write_with_gap(void* mem, u32 len, u32 skip_at, u32 skip_len) {
   } else
 
     close(fd);
+
+  return 0;
 
 }
 
@@ -559,14 +576,35 @@ void sync_fuzzers(char** argv) {
 
     /* Skip anything that doesn't have a queue/ subdirectory. */
 
-    qd_path = alloc_printf("%s/%s/queue", sync_dir, sd_ent->d_name);
+    qd_path = alloc_printf("%s/%s/gen_queue", sync_dir, sd_ent->d_name);
 
     if (!(qd = opendir(qd_path))) {
 
       ck_free(qd_path);
-      continue;
 
+      qd_path = alloc_printf("%s/%s/queue", sync_dir, sd_ent->d_name);
+
+      if (!(qd = opendir(qd_path))) {
+
+        ck_free(qd_path);
+        continue;
+
+      }
     }
+
+    if (pre_save_handler) {
+      closedir(qd);
+      ck_free(qd_path);
+      qd_path = alloc_printf("%s/%s/queue", sync_dir, sd_ent->d_name);
+
+      if (!(qd = opendir(qd_path))) {
+
+        ck_free(qd_path);
+        continue;
+
+      }
+    }
+
 
     /* Retrieve the ID of the last seen test case. */
 
@@ -629,17 +667,24 @@ void sync_fuzzers(char** argv) {
 
         if (mem == MAP_FAILED) PFATAL("Unable to mmap '%s'", path);
 
+        u8* file_mem = mem;
+        size_t file_size = st.st_size;
+
+        if (post_load_handler) {
+          post_load_handler(mem, st.st_size, &file_mem, &file_size);
+        }
+
         /* See what happens. We rely on save_if_interesting() to catch major
            errors and save the test case. */
 
-        write_to_testcase(mem, st.st_size);
+        write_to_testcase(file_mem, file_size);
 
         fault = run_target(argv, exec_tmout);
 
         if (stop_soon) return;
 
         syncing_party = sd_ent->d_name;
-        queued_imported += save_if_interesting(argv, mem, st.st_size, fault);
+        queued_imported += save_if_interesting(argv, file_mem, file_size, fault);
         syncing_party = 0;
 
         munmap(mem, st.st_size);
@@ -664,6 +709,16 @@ void sync_fuzzers(char** argv) {
 
   closedir(sd);
 
+}
+
+u8* get_gen_name(u8* fname, u8* dir) {
+  u32 len = strlen(fname);
+  u8* gen_fname = ck_alloc_nozero(len + 5);
+  u32 index = (u8*) strstr(fname, dir) + 1 - fname;
+  memcpy(gen_fname, fname, index);
+  memcpy(gen_fname + index, "gen_", 4);
+  memcpy(gen_fname + index + 4, fname + index, len + 1 - index);
+  return gen_fname;
 }
 
 /* Trim all new test cases to save cycles when doing deterministic checks. The
@@ -716,7 +771,18 @@ u8 trim_case(char** argv, struct queue_entry* q, u8* in_buf) {
       u32 trim_avail = MIN(remove_len, q->len - remove_pos);
       u32 cksum;
 
-      write_with_gap(in_buf, q->len, remove_pos, trim_avail);
+      if (write_with_gap(in_buf, q->len, remove_pos, trim_avail)) {
+
+        if (stop_soon) goto abort_trimming;
+
+	remove_pos += remove_len;
+
+	if (!(trim_exec++ % stats_update_freq)) show_stats();
+        ++stage_cur;
+
+	continue;
+
+      }
 
       fault = run_target(argv, exec_tmout);
       ++trim_execs;
@@ -790,6 +856,30 @@ u8 trim_case(char** argv, struct queue_entry* q, u8* in_buf) {
     ck_write(fd, in_buf, q->len, q->fname);
     close(fd);
 
+    if (pre_save_handler) {
+      s32 gen_fd;
+
+      u8* gen_fname = get_gen_name(q->fname, "/queue/");
+      if (no_unlink) {
+
+        gen_fd = open(gen_fname, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+
+      } else {
+
+        unlink(gen_fname);                                    /* ignore errors */
+        gen_fd = open(gen_fname, O_WRONLY | O_CREAT | O_EXCL, 0600);
+
+      }
+
+      if (gen_fd < 0) PFATAL("Unable to create '%s'", gen_fname);
+
+      u8*    new_data;
+      size_t new_size = pre_save_handler(in_buf, q->len, &new_data);
+      ck_write(gen_fd, new_data, new_size, gen_fname);
+      close(gen_fd);
+      ck_free(gen_fname);
+    }
+
     memcpy(trace_bits, clean_trace, MAP_SIZE);
     update_bitmap_score(q);
 
@@ -817,7 +907,8 @@ u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
 
   }
 
-  write_to_testcase(out_buf, len);
+  if (write_to_testcase(out_buf, len))
+    return 0;
 
   fault = run_target(argv, exec_tmout);
 

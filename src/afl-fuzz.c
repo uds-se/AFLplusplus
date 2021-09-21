@@ -777,7 +777,7 @@ int main(int argc, char** argv) {
 
   }
 
-  if (getenv("AFL_CUSTOM_MUTATOR_ONLY")) {
+  if (getenv("AFL_CUSTOM_MUTATOR_ONLY") || getenv("BLACKBOX_FFGEN") || getenv("BLACKBOX_FFMUT")) {
 
     /* This ensures we don't proceed to havoc/splice */
     custom_only = 1;

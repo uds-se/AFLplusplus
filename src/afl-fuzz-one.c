@@ -529,6 +529,83 @@ u8 fuzz_one_original(char** argv) {
 
   }
 
+  if (one_smart_mutation) {
+    if (getenv("BLACKBOX_FFMUT") && queue_cur->id >= queued_at_start) {
+      ret_val = 0;
+      goto abandon_entry;
+    }
+
+    stage_short = "smart";
+    stage_name = "smart mutator";
+    stage_max = HAVOC_CYCLES * perf_score / havoc_div / 100;
+    if (stage_max < HAVOC_MIN) stage_max = HAVOC_MIN;
+    stage_val_type = STAGE_VAL_NONE;
+
+    orig_hit_cnt = queued_paths + unique_crashes;
+
+    char* fn = alloc_printf("%s/mutations.log", out_dir);
+    assert(fn);
+    FILE* mut = fopen(fn, "a");
+
+    ck_free(fn);
+    
+
+    for (stage_cur = 0; stage_cur < stage_max; ++stage_cur) {
+
+      u8* mutated_buf;
+      unsigned int mutated_size;
+      int retval;
+      if (getenv("BLACKBOX_FFGEN")) {
+        generate_random_file(&mutated_buf, &mutated_size);
+      } else
+        retval = one_smart_mutation(queue_cur->id, &mutated_buf, &mutated_size);
+      if (mutated_size > 0) {
+
+        if (mutated_size > len)
+          out_buf = ck_realloc(out_buf, mutated_size);
+        memcpy(out_buf, mutated_buf, mutated_size);
+	u32 queued_paths_old = queued_paths;
+        if (common_fuzz_stuff(argv, out_buf, mutated_size)) {
+          fclose(mut);
+          goto abandon_entry;
+
+        }
+
+        /* If we're finding new stuff, let's run for a bit longer, limits
+           permitting. */
+
+	if (queued_paths > queued_paths_old) {
+          fprintf(mut, "Queue entry %u (return status %d):\n%s\n", queued_paths_old, retval, mutation_infop);
+
+          if (perf_score <= havoc_max_mult * 100) {
+
+            stage_max *= 2;
+            perf_score *= 2;
+
+          }
+
+        }
+
+      }
+
+    }
+    fclose(mut);
+
+    new_hit_cnt = queued_paths + unique_crashes;
+
+    stage_finds[STAGE_CUSTOM_MUTATOR] += new_hit_cnt - orig_hit_cnt;
+    stage_cycles[STAGE_CUSTOM_MUTATOR] += stage_max;
+
+    if (custom_only) {
+
+      /* Skip other stages */
+      ret_val = 0;
+      goto abandon_entry;
+
+    }
+
+  }
+
   /* Skip right away if -d is given, if it has not been chosen sufficiently
      often to warrant the expensive deterministic stage (fuzz_level), or
      if it has gone through deterministic testing in earlier, resumed runs
@@ -4183,6 +4260,7 @@ pacemaker_fuzzing:
 
       if (in_buf != orig_in) ck_free(in_buf);
       ck_free(out_buf);
+      out_buf = NULL;
       ck_free(eff_map);
 
       if (key_puppet == 1) {

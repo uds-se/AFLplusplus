@@ -177,6 +177,7 @@ u64 total_crashes,                      /* Total number of crashes          */
     total_tmouts,                       /* Total number of timeouts         */
     unique_tmouts,                      /* Timeouts with unique signatures  */
     unique_hangs,                       /* Hangs with unique signatures     */
+    total_gens,                         /* Total generation attempts        */
     total_execs,                        /* Total execve() calls             */
     slowest_exec_ms,                    /* Slowest testcase non hang in ms  */
     start_time,                         /* Unix start time (ms)             */
@@ -254,7 +255,12 @@ u8 *(*post_handler)(u8 *buf, u32 *len);
 /* hooks for the custom mutator function */
 size_t (*custom_mutator)(u8 *data, size_t size, u8 *mutated_out,
                          size_t max_size, unsigned int seed);
+int (*process_file)(const char *file_name, const char *rand_name);
+int (*one_smart_mutation)(int target_file_index, unsigned char** file, unsigned* file_size);
+void (*generate_random_file)(unsigned char** file, unsigned* file_size);
+char *mutation_infop;
 size_t (*pre_save_handler)(u8 *data, size_t size, u8 **new_data);
+int (*post_load_handler)(u8 *data, size_t size, u8 **new_data, size_t* new_size);
 
 /* Interesting values, as per config.h */
 

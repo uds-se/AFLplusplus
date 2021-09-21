@@ -110,6 +110,8 @@ struct queue_entry {
 
   u8* fname;                            /* File name for the test case      */
   u32 len;                              /* Input length                     */
+  u32 id;                               /* ID number                        */
+  u8 validity;                          /* Validity percentage              */
 
   u8 cal_failed,                        /* Calibration failed?              */
       trim_done,                        /* Trimmed?                         */
@@ -464,6 +466,11 @@ u8* (*post_handler)(u8* buf, u32* len);
  */
 size_t (*custom_mutator)(u8* data, size_t size, u8* mutated_out,
                          size_t max_size, unsigned int seed);
+int (*process_file)(const char *file_name, const char *rand_name);
+int (*one_smart_mutation)(int target_file_index, unsigned char** file, unsigned* file_size);
+void (*generate_random_file)(unsigned char** file, unsigned* file_size);
+extern char* mutation_infop;
+
 /**
  * A post-processing function to use right before AFL writes the test case to
  * disk in order to execute the target. If this functionality is not needed,
@@ -474,6 +481,9 @@ size_t (*custom_mutator)(u8* data, size_t size, u8* mutated_out,
  * @return Size of data after processing.
  */
 size_t (*pre_save_handler)(u8* data, size_t size, u8** new_data);
+int (*post_load_handler)(u8* data, size_t size, u8** new_data, size_t* new_size);
+
+u8* get_gen_name(u8* fname, u8* dir);
 
 /* Interesting values, as per config.h */
 
@@ -599,8 +609,8 @@ void show_init_stats(void);
 /* Run */
 
 u8   run_target(char**, u32);
-void write_to_testcase(void*, u32);
-void write_with_gap(void*, u32, u32, u32);
+u8 write_to_testcase(void*, u32);
+u8 write_with_gap(void*, u32, u32, u32);
 u8   calibrate_case(char**, struct queue_entry*, u8*, u32, u8);
 void sync_fuzzers(char**);
 u8   trim_case(char**, struct queue_entry*, u8*);

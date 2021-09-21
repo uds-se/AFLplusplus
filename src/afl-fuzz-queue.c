@@ -110,6 +110,7 @@ void add_to_queue(u8* fname, u32 len, u8 passed_det) {
 
   q->fname = fname;
   q->len = len;
+  q->id = queued_paths;
   q->depth = cur_depth + 1;
   q->passed_det = passed_det;
   q->n_fuzz = 1;
@@ -449,6 +450,9 @@ u32 calculate_score(struct queue_entry* q) {
   /* Make sure that we don't go over limit. */
 
   if (perf_score > havoc_max_mult * 100) perf_score = havoc_max_mult * 100;
+
+  if (one_smart_mutation && q->validity >= 50)
+    perf_score *= 2;
 
   return perf_score;
 

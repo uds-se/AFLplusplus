@@ -273,11 +273,22 @@ void setup_custom_mutator(void) {
   if (!dh) FATAL("%s", dlerror());
 
   custom_mutator = dlsym(dh, "afl_custom_mutator");
-  if (!custom_mutator) FATAL("Symbol 'afl_custom_mutator' not found.");
+  //  if (!custom_mutator) FATAL("Symbol 'afl_custom_mutator' not found.");
 
-  pre_save_handler = dlsym(dh, "afl_pre_save_handler");
-  //  if (!pre_save_handler) WARNF("Symbol 'afl_pre_save_handler' not found.");
+  if (getenv("AFL_FFGEN")) {
+    pre_save_handler = dlsym(dh, "ff_generate");
+    //  if (!pre_save_handler) WARNF("Symbol 'ff_generate' not found.");
 
+    post_load_handler = dlsym(dh, "ff_parse");
+    //  if (!post_load_handler) WARNF("Symbol 'ff_parse' not found.");
+  } else {
+    if (!getenv("BLACKBOX_FFGEN"))
+      process_file = dlsym(dh, "process_file");
+    one_smart_mutation = dlsym(dh, "one_smart_mutation");
+    generate_random_file = dlsym(dh, "generate_random_file");
+    mutation_infop = dlsym(dh, "mutation_info");
+    printf("mutation_infop %p\n", mutation_infop);
+  }
   OKF("Custom mutator installed successfully.");
 
 }
@@ -298,6 +309,12 @@ static void shuffle_ptrs(void** ptrs, u32 cnt) {
   }
 
 }
+
+u8* get_file_name(u8* fname) {
+  u8* tmp = alloc_printf("%s/dec_queue/%s", out_dir, strrchr(fname, '/') + 1);
+  return tmp;
+}
+
 
 /* Read all testcases from the input directory, then queue them for testing.
    Called at startup. */
@@ -388,6 +405,10 @@ void read_testcases(void) {
 
     add_to_queue(fn2, st.st_size, passed_det);
 
+    if (process_file) {
+      queue_top->validity = process_file(fn2, get_file_name(fn2));
+    }
+
   }
 
   free(nl);                                                  /* not tracked */
@@ -455,6 +476,18 @@ void perform_dry_run(char** argv) {
       FATAL("Short read from '%s'", q->fname);
 
     close(fd);
+
+    if (pre_save_handler){
+      u8* gen_fn = get_gen_name(q->fname, "/queue/");
+      fd = open(gen_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+      if (fd < 0) PFATAL("Unable to create '%s'", gen_fn);
+      u8*    new_data;
+      size_t new_size = pre_save_handler(use_mem, q->len, &new_data);
+      ck_write(fd, new_data, new_size, gen_fn);
+      close(fd);
+      ck_free(gen_fn);
+    }
+
 
     res = calibrate_case(argv, q, use_mem, 0, 1);
     ck_free(use_mem);
@@ -1103,6 +1136,18 @@ void maybe_delete_out_dir(void) {
   if (delete_files(fn, CASE_PREFIX)) goto dir_cleanup_failed;
   ck_free(fn);
 
+  if (pre_save_handler) {
+    fn = alloc_printf("%s/gen_queue", out_dir);
+    if (delete_files(fn, CASE_PREFIX)) goto dir_cleanup_failed;
+    ck_free(fn);
+  }
+
+  if (one_smart_mutation) {
+    fn = alloc_printf("%s/dec_queue", out_dir);
+    if (delete_files(fn, NULL)) goto dir_cleanup_failed;
+    ck_free(fn);
+  }
+
   /* All right, let's do <out_dir>/crashes/id:* and <out_dir>/hangs/id:*. */
 
   if (!in_place_resume) {
@@ -1145,7 +1190,70 @@ void maybe_delete_out_dir(void) {
   if (delete_files(fn, CASE_PREFIX)) goto dir_cleanup_failed;
   ck_free(fn);
 
+  fn = alloc_printf("%s/gen_crashes", out_dir);
+
+  /* Make backup of the crashes directory if it's not empty and if we're
+     doing in-place resume. */
+
+  if (in_place_resume && rmdir(fn)) {
+
+    time_t     cur_t = time(0);
+    struct tm* t = localtime(&cur_t);
+
+#ifndef SIMPLE_FILES
+
+    u8* nfn = alloc_printf("%s.%04d-%02d-%02d-%02d:%02d:%02d", fn,
+                           t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+                           t->tm_hour, t->tm_min, t->tm_sec);
+
+#else
+
+    u8* nfn = alloc_printf("%s_%04d%02d%02d%02d%02d%02d", fn, t->tm_year + 1900,
+                           t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min,
+                           t->tm_sec);
+
+#endif                                                    /* ^!SIMPLE_FILES */
+
+    rename(fn, nfn);                                      /* Ignore errors. */
+    ck_free(nfn);
+
+  }
+
+  if (delete_files(fn, CASE_PREFIX)) goto dir_cleanup_failed;
+  ck_free(fn);
+
   fn = alloc_printf("%s/hangs", out_dir);
+
+  /* Backup hangs, too. */
+
+  if (in_place_resume && rmdir(fn)) {
+
+    time_t     cur_t = time(0);
+    struct tm* t = localtime(&cur_t);
+
+#ifndef SIMPLE_FILES
+
+    u8* nfn = alloc_printf("%s.%04d-%02d-%02d-%02d:%02d:%02d", fn,
+                           t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+                           t->tm_hour, t->tm_min, t->tm_sec);
+
+#else
+
+    u8* nfn = alloc_printf("%s_%04d%02d%02d%02d%02d%02d", fn, t->tm_year + 1900,
+                           t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min,
+                           t->tm_sec);
+
+#endif                                                    /* ^!SIMPLE_FILES */
+
+    rename(fn, nfn);                                      /* Ignore errors. */
+    ck_free(nfn);
+
+  }
+
+  if (delete_files(fn, CASE_PREFIX)) goto dir_cleanup_failed;
+  ck_free(fn);
+
+  fn = alloc_printf("%s/gen_hangs", out_dir);
 
   /* Backup hangs, too. */
 
@@ -1276,6 +1384,18 @@ void setup_dirs_fds(void) {
   if (mkdir(tmp, 0700)) PFATAL("Unable to create '%s'", tmp);
   ck_free(tmp);
 
+  if (pre_save_handler) {
+    tmp = alloc_printf("%s/gen_queue", out_dir);
+    if (mkdir(tmp, 0700)) PFATAL("Unable to create '%s'", tmp);
+    ck_free(tmp);
+  }
+
+  if (one_smart_mutation) {
+    tmp = alloc_printf("%s/dec_queue", out_dir);
+    if (mkdir(tmp, 0700)) PFATAL("Unable to create '%s'", tmp);
+    ck_free(tmp);
+  }
+
   /* Top-level directory for queue metadata used for session
      resume and related tasks. */
 
@@ -1326,12 +1446,23 @@ void setup_dirs_fds(void) {
   tmp = alloc_printf("%s/crashes", out_dir);
   if (mkdir(tmp, 0700)) PFATAL("Unable to create '%s'", tmp);
   ck_free(tmp);
+  
+  if (pre_save_handler) {
+    tmp = alloc_printf("%s/gen_crashes", out_dir);
+    if (mkdir(tmp, 0700)) PFATAL("Unable to create '%s'", tmp);
+    ck_free(tmp);
+  }
 
   /* All recorded hangs. */
 
   tmp = alloc_printf("%s/hangs", out_dir);
   if (mkdir(tmp, 0700)) PFATAL("Unable to create '%s'", tmp);
   ck_free(tmp);
+  if (pre_save_handler) {
+    tmp = alloc_printf("%s/gen_hangs", out_dir);
+    if (mkdir(tmp, 0700)) PFATAL("Unable to create '%s'", tmp);
+    ck_free(tmp);
+  }
 
   /* Generally useful file descriptors. */
 

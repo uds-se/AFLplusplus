@@ -505,6 +505,14 @@ static void write_crash_readme(void) {
 
 }
 
+
+u8* get_rand_name(u8* fname) {
+  u8* tmp = alloc_printf("%s/dec_queue/%s", out_dir, strrchr(fname, '/') + 1);
+  return tmp;
+}
+
+
+
 /* Check if the result of an execve() during routine fuzzing is interesting,
    save or queue the input test case for further analysis if so. Returns 1 if
    entry is saved, 0 otherwise. */
@@ -514,6 +522,7 @@ u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
   if (len == 0) return 0;
 
   u8* fn = "";
+  u8* new_fn = "";
   u8  hnb;
   s32 fd;
   u8  keeping = 0, res;
@@ -576,6 +585,21 @@ u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
     ck_write(fd, mem, len, fn);
     close(fd);
 
+    if (pre_save_handler) {
+      u8* gen_fn = get_gen_name(fn, "/queue/");
+      fd = open(gen_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+      if (fd < 0) PFATAL("Unable to create '%s'", gen_fn);
+      u8*    new_data;
+      size_t new_size = pre_save_handler(mem, len, &new_data);
+      ck_write(fd, new_data, new_size, gen_fn);
+      close(fd);
+      ck_free(gen_fn);
+    }
+
+    if (process_file) {
+      queue_top->validity = process_file(fn, get_rand_name(fn));
+    }
+
     keeping = 1;
 
   }
@@ -637,6 +661,7 @@ u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
       fn = alloc_printf("%s/hangs/id_%06llu", out_dir, unique_hangs);
 
 #endif                                                    /* ^!SIMPLE_FILES */
+      new_fn = get_gen_name(fn, "/hangs/");
 
       ++unique_hangs;
 
@@ -681,6 +706,7 @@ u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
                         kill_signal);
 
 #endif                                                    /* ^!SIMPLE_FILES */
+      new_fn = get_gen_name(fn, "/crashes/");
 
       ++unique_crashes;
       if (infoexec) {  // if the user wants to be informed on new crashes - do
@@ -714,7 +740,17 @@ u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
   ck_write(fd, mem, len, fn);
   close(fd);
 
+  if (pre_save_handler) {
+    fd = open(new_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    if (fd < 0) PFATAL("Unable to create '%s'", new_fn);
+    u8*    new_data;
+    size_t new_size = pre_save_handler(mem, len, &new_data);
+    ck_write(fd, new_data, new_size, new_fn);
+    close(fd);
+  }
+
   ck_free(fn);
+  ck_free(new_fn);
 
   return keeping;
 

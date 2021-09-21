@@ -634,7 +634,7 @@ void show_stats(void) {
 
   }
 
-  if (custom_mutator) {
+  if (custom_mutator || one_smart_mutation) {
 
     sprintf(tmp, "%s/%s", DI(stage_finds[STAGE_CUSTOM_MUTATOR]),
             DI(stage_cycles[STAGE_CUSTOM_MUTATOR]));
