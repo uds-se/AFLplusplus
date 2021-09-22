@@ -4,39 +4,56 @@ This is a modified version of AFL++ which integrates it with [FormatFuzzer](http
 
 AFL++ can be built normally with
 ```shell
+$ export WORKDIR=$(pwd)
+$ git clone https://github.com/uds-se/AFLplusplus.git
+$ cd AFLplusplus
 $ make source-only
 ```
 
 In the FormatFuzzer directory, build the format-specific fuzzer as a shared library. For example,
 ```shell
-$ make png.so
+$ cd $WORKDIR
+$ git clone https://github.com/uds-se/FormatFuzzer.git
+$ cd FormatFuzzer
+$ ./build.sh png
 ```
 
+Build a benchmark with AFL instrumentation. For example,
+```shell
+$ cd $WORKDIR
+$ git clone https://github.com/glennrp/libpng.git
+$ cd libpng
+$ CC=$WORKDIR/AFLplusplus/afl-clang-fast ./configure --disable-shared
+$ make
+$ cd contrib/libtests/
+$ $WORKDIR/AFLplusplus/afl-clang-fast readpng.c ../../.libs/libpng16.a -lz -lm -o readpng
+$ cd $WORKDIR/AFLplusplus
+```
 
 Fuzzing strategies:
 
   * AFL+FFMut: to run AFL++ using FormatFuzzer to provide format-specific smart mutations, set the environment variable `AFL_CUSTOM_MUTATOR_LIBRARY` to point to the format-specific fuzzer produced by FormatFuzzer as a shared library, such as `png.so`. For example,
 
 ```shell
-$ AFL_CUSTOM_MUTATOR_LIBRARY=~/FormatFuzzer/png.so timeout 8h ./afl-fuzz -S ffmut -i testcases/images/png -o png -x dictionaries/png.dict -- readpng
+$ AFL_CUSTOM_MUTATOR_LIBRARY=$WORKDIR/FormatFuzzer/png.so timeout 8h ./afl-fuzz -S ffmut -i testcases/images/png -o png -x dictionaries/png.dict -- $WORKDIR/libpng/contrib/libtests/readpng
 ```
 
   * AFL+FFGen: to use FormatFuzzer as a format-specific generator, and let AFL++ mutate its decision seeds, add the environment variable `AFL_FFGEN`. In that case, the input directory specified with `-i` should contain the decision seeds corresponding to the corpus of initial files. For example,
 
 ```shell
-$ AFL_FFGEN=1 AFL_CUSTOM_MUTATOR_LIBRARY=~/FormatFuzzer/png.so timeout 8h ./afl-fuzz -S ffgen -i seeds/png -o png -- readpng
+$ AFL_FFGEN=1 AFL_CUSTOM_MUTATOR_LIBRARY=$WORKDIR/FormatFuzzer/png.so timeout 8h ./afl-fuzz -S ffgen -i seeds/png -o png -- $WORKDIR/libpng/contrib/libtests/readpng
 ```
 
   * Blackbox FFMut: to run FormatFuzzer as a blackbox smart-mutator which creates files by applying smart mutations to the intial corpus without using AFL coverage feedback (ignoring new files added to the AFL queue), add the environment variable `BLACKBOX_FFMUT`. For example,
 
 ```shell
-$ BLACKBOX_FFMUT=1 AFL_CUSTOM_MUTATOR_LIBRARY=~/FormatFuzzer/png.so timeout 8h ./afl-fuzz -S bbmut -i testcases/images/png -o png -- readpng
+$ BLACKBOX_FFMUT=1 AFL_CUSTOM_MUTATOR_LIBRARY=$WORKDIR/FormatFuzzer/png.so timeout 8h ./afl-fuzz -S bbmut -i testcases/images/png -o png -- $WORKDIR/libpng/contrib/libtests/readpng
 ```
 
   * Blackbox FFGen: to run FormatFuzzer as a blackbox generator which creates format-specific files from scratch without using AFL coverage feedback, add the environment variable `BLACKBOX_FFGEN`. The initial input corpus specified with `-i` is ignored. For example,
 
 ```shell
-$ BLACKBOX_FFGEN=1 AFL_CUSTOM_MUTATOR_LIBRARY=~/FormatFuzzer/png.so timeout 8h ./afl-fuzz -S bbgen -i testcases/empty -o png -- readpng
+$ BLACKBOX_FFGEN=1 AFL_CUSTOM_MUTATOR_LIBRARY=$WORKDIR/FormatFuzzer/png.so timeout 8h ./afl-fuzz -S bbgen -i testcases/empty -o png -- $WORKDIR/libpng/contrib/libtests/readpng
 ```
 
 
