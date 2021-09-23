@@ -60,6 +60,7 @@
 #include <termios.h>
 #include <dlfcn.h>
 #include <sched.h>
+#include <assert.h>
 
 #include <sys/wait.h>
 #include <sys/time.h>
