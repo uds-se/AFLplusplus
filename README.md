@@ -5,6 +5,9 @@ This is a modified version of AFL++ which integrates it with [FormatFuzzer](http
 AFL++ can be built normally with
 ```shell
 $ export WORKDIR=$(pwd)
+$ sudo apt-get install -y build-essential python3-dev automake git bison libglib2.0-dev libpixman-1-dev python3-setuptools
+$ sudo apt-get install -y lld llvm llvm-dev clang 
+$ sudo apt-get install -y gcc-$(gcc --version|head -n1|sed 's/.* //'|sed 's/\..*//')-plugin-dev libstdc++-$(gcc --version|head -n1|sed 's/.* //'|sed 's/\..*//')-dev
 $ git clone https://github.com/uds-se/AFLplusplus.git
 $ cd AFLplusplus
 $ make source-only
