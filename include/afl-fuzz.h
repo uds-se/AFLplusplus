@@ -451,7 +451,7 @@ extern u32                extras_cnt;   /* Total number of tokens read      */
 extern struct extra_data* a_extras;     /* Automatically selected extras    */
 extern u32                a_extras_cnt; /* Total number of tokens available */
 
-u8* (*post_handler)(u8* buf, u32* len);
+extern u8* (*post_handler)(u8* buf, u32* len);
 
 /* hooks for the custom mutator function */
 /**
@@ -465,11 +465,11 @@ u8* (*post_handler)(u8* buf, u32* len);
  * output given the same seed.
  * @return Size of the mutated output.
  */
-size_t (*custom_mutator)(u8* data, size_t size, u8* mutated_out,
+extern size_t (*custom_mutator)(u8* data, size_t size, u8* mutated_out,
                          size_t max_size, unsigned int seed);
-int (*process_file)(const char *file_name, const char *rand_name);
-int (*one_smart_mutation)(int target_file_index, unsigned char** file, unsigned* file_size);
-void (*generate_random_file)(unsigned char** file, unsigned* file_size);
+extern int (*process_file)(const char *file_name, const char *rand_name);
+extern int (*one_smart_mutation)(int target_file_index, unsigned char** file, unsigned* file_size);
+extern void (*generate_random_file)(unsigned char** file, unsigned* file_size);
 extern char* mutation_infop;
 
 /**
@@ -481,8 +481,8 @@ extern char* mutation_infop;
  * @param new_data Buffer to store the test case after processing
  * @return Size of data after processing.
  */
-size_t (*pre_save_handler)(u8* data, size_t size, u8** new_data);
-int (*post_load_handler)(u8* data, size_t size, u8** new_data, size_t* new_size);
+extern size_t (*pre_save_handler)(u8* data, size_t size, u8** new_data);
+extern int (*post_load_handler)(u8* data, size_t size, u8** new_data, size_t* new_size);
 
 u8* get_gen_name(u8* fname, u8* dir);
 

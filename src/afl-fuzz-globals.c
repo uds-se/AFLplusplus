@@ -152,8 +152,7 @@ u8 virgin_bits[MAP_SIZE],               /* Regions yet untouched by fuzzing */
 u8 var_bytes[MAP_SIZE];                 /* Bytes that appear to be variable */
 
 volatile u8 stop_soon,                  /* Ctrl-C pressed?                  */
-    clear_screen = 1,                   /* Window resized?                  */
-    child_timed_out;                    /* Traced process timed out?        */
+    clear_screen = 1;                   /* Window resized?                  */
 
 u32 queued_paths,                       /* Total number of queued testcases */
     queued_variable,                    /* Testcases with variable behavior */
