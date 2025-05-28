@@ -275,6 +275,8 @@ void setup_custom_mutator(void) {
   custom_mutator = dlsym(dh, "afl_custom_mutator");
   //  if (!custom_mutator) FATAL("Symbol 'afl_custom_mutator' not found.");
 
+  if (getenv("FF_STACKING") && !getenv("AFL_FFGEN") && !getenv("BLACKBOX_FFMUT") && !getenv("BLACKBOX_FFGEN"))
+    stacking_mutation_mode = 1;
   if (getenv("AFL_FFGEN")) {
     pre_save_handler = dlsym(dh, "ff_generate");
     //  if (!pre_save_handler) WARNF("Symbol 'ff_generate' not found.");
@@ -407,6 +409,7 @@ void read_testcases(void) {
 
     if (process_file) {
       queue_top->validity = process_file(fn2, get_file_name(fn2));
+      queue_top->index = queued_parsed++;
     }
 
   }

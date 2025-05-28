@@ -112,6 +112,7 @@ struct queue_entry {
   u8* fname;                            /* File name for the test case      */
   u32 len;                              /* Input length                     */
   u32 id;                               /* ID number                        */
+  u32 index;                            /* FormatFuzzer index               */
   u8 validity;                          /* Validity percentage              */
 
   u8 cal_failed,                        /* Calibration failed?              */
@@ -171,7 +172,8 @@ enum {
   /* 16 */ STAGE_SPLICE,
   /* 17 */ STAGE_PYTHON,
   /* 18 */ STAGE_RADAMSA,
-  /* 19 */ STAGE_CUSTOM_MUTATOR
+  /* 19 */ STAGE_CUSTOM_MUTATOR,
+  /* 20 */ STAGE_FORMATFUZZER
 
 };
 
@@ -357,6 +359,7 @@ extern volatile u8 stop_soon,           /* Ctrl-C pressed?                  */
     child_timed_out;                    /* Traced process timed out?        */
 
 extern u32 queued_paths,                /* Total number of queued testcases */
+    queued_parsed,                      /* Testcases parsed by FormatFuzzer */
     queued_variable,                    /* Testcases with variable behavior */
     queued_at_start,                    /* Total number of initial inputs   */
     queued_discovered,                  /* Items discovered during this run */
@@ -471,6 +474,7 @@ extern int (*process_file)(const char *file_name, const char *rand_name);
 extern int (*one_smart_mutation)(int target_file_index, unsigned char** file, unsigned* file_size);
 extern void (*generate_random_file)(unsigned char** file, unsigned* file_size);
 extern char* mutation_infop;
+extern u8 stacking_mutation_mode;
 
 /**
  * A post-processing function to use right before AFL writes the test case to

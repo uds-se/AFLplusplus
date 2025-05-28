@@ -577,11 +577,11 @@ void show_stats(void) {
        tmp, sync_id ? DI(queued_imported) : (u8*)"n/a");
 
   sprintf(tmp, "%s/%s, %s/%s, %s/%s", DI(stage_finds[STAGE_HAVOC]),
-          DI(stage_cycles[STAGE_HAVOC]), DI(stage_finds[STAGE_SPLICE]),
-          DI(stage_cycles[STAGE_SPLICE]), DI(stage_finds[STAGE_RADAMSA]),
-          DI(stage_cycles[STAGE_RADAMSA]));
+          DI(stage_cycles[STAGE_HAVOC]), DI(stage_finds[STAGE_FORMATFUZZER]),
+          DI(stage_cycles[STAGE_FORMATFUZZER]), DI(stage_finds[STAGE_SPLICE]),
+          DI(stage_cycles[STAGE_SPLICE]));
 
-  SAYF(bV bSTOP "   havoc/rad : " cRST "%-36s " bSTG bV bSTOP, tmp);
+  SAYF(bV bSTOP "    havoc/ff : " cRST "%-36s " bSTG bV bSTOP, tmp);
 
   if (t_bytes)
     sprintf(tmp, "%0.02f%%", stab_ratio);

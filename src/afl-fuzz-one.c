@@ -330,6 +330,12 @@ static void locate_diffs(u8* ptr1, u8* ptr2, u32 len, s32* first, s32* last) {
 
 #endif                                                     /* !IGNORE_FINDS */
 
+u8* get_rand_name(u8* fname) {
+  u8* tmp = alloc_printf("%s/dec_queue/%s", out_dir, strrchr(fname, '/') + 1);
+  return tmp;
+}
+
+
 /* Take the current entry from the queue, fuzz it for a while. This
    function is a tad too long... returns 0 if fuzzed successfully, 1 if
    skipped or bailed out. */
@@ -476,6 +482,11 @@ u8 fuzz_one_original(char** argv) {
    * PERFORMANCE SCORE *
    *********************/
 
+  if (process_file && !custom_only && queue_cur->index == -1) {
+    queue_cur->validity = process_file(queue_cur->fname, get_rand_name(queue_cur->fname));
+    queue_cur->index = queued_parsed++;
+  }
+
   orig_perf = perf_score = calculate_score(queue_cur);
 
   if (perf_score == 0) goto abandon_entry;
@@ -535,9 +546,9 @@ u8 fuzz_one_original(char** argv) {
       goto abandon_entry;
     }
 
-    stage_short = "smart";
-    stage_name = "smart mutator";
-    stage_max = HAVOC_CYCLES * perf_score / havoc_div / 100;
+    stage_short = "formatfuzzer";
+    stage_name = "formatfuzzer";
+    stage_max = (stacking_mutation_mode ? 16 : 32) * perf_score / havoc_div / 100;
     if (stage_max < HAVOC_MIN) stage_max = HAVOC_MIN;
     stage_val_type = STAGE_VAL_NONE;
 
@@ -558,7 +569,7 @@ u8 fuzz_one_original(char** argv) {
       if (getenv("BLACKBOX_FFGEN")) {
         generate_random_file(&mutated_buf, &mutated_size);
       } else
-        retval = one_smart_mutation(queue_cur->id, &mutated_buf, &mutated_size);
+        retval = one_smart_mutation(queue_cur->index, &mutated_buf, &mutated_size);
       if (mutated_size > 0) {
 
         if (mutated_size > len)
@@ -1786,12 +1797,21 @@ havoc_stage:
   /* The havoc stage mutation code is also invoked when splicing files; if the
      splice_cycle variable is set, generate different descriptions and such. */
 
+  u8 ff_mode = 0;
   if (!splice_cycle) {
 
-    stage_name = "havoc";
-    stage_short = "havoc";
-    stage_max = (doing_det ? HAVOC_CYCLES_INIT : HAVOC_CYCLES) * perf_score /
-                havoc_div / 100;
+    if (one_smart_mutation && stacking_mutation_mode && UR(2)) {
+      stage_name = "havoc-formatfuzzer";
+      stage_short = "havoc-formatfuzzer";
+      stage_max = 32 * perf_score /
+                  havoc_div / 100;
+      ff_mode = 1;
+    } else {
+      stage_name = "havoc";
+      stage_short = "havoc";
+      stage_max = (doing_det ? HAVOC_CYCLES_INIT : HAVOC_CYCLES) * perf_score /
+                  havoc_div / 100;
+    }
 
   } else {
 
@@ -1814,12 +1834,40 @@ havoc_stage:
 
   havoc_queued = queued_paths;
 
+  char* fn = alloc_printf("%s/mutations.log", out_dir);
+  assert(fn);
+  FILE* mut = fopen(fn, "a");
+
+  ck_free(fn);
+
+  s32 ff_results = 0, ff_runs = 0;
+
   /* We essentially just do several thousand runs (depending on perf_score)
      where we take the input file and make random stacked tweaks. */
 
   for (stage_cur = 0; stage_cur < stage_max; ++stage_cur) {
 
-    u32 use_stacking = 1 << (1 + UR(HAVOC_STACK_POW2));
+    u32 use_stacking;
+
+    u8 has_smart_mut = 0;
+    int retval;
+
+    if (ff_mode) {
+          u8* mutated_buf;
+          unsigned int mutated_size;
+          retval = one_smart_mutation(queue_cur->index, &mutated_buf, &mutated_size);
+          if (mutated_size > 0) {
+            if (mutated_size > len)
+              out_buf = ck_realloc(out_buf, mutated_size);
+            memcpy(out_buf, mutated_buf, mutated_size);
+            temp_len = mutated_size;
+            has_smart_mut = 1;
+          }
+    }
+    if (has_smart_mut)
+      use_stacking = (1 << (1 + UR(5))) - 1;
+    else
+      use_stacking = 1 << (1 + UR(HAVOC_STACK_POW2));
 
     stage_cur_val = use_stacking;
 
@@ -2199,7 +2247,11 @@ havoc_stage:
 
     }
 
-    if (common_fuzz_stuff(argv, out_buf, temp_len)) goto abandon_entry;
+    if (common_fuzz_stuff(argv, out_buf, temp_len)) {
+      fclose(mut);
+      goto abandon_entry;
+    }
+
 
     /* out_buf might have been mangled a bit, so let's restore it to its
        original size and shape. */
@@ -2212,7 +2264,10 @@ havoc_stage:
        permitting. */
 
     if (queued_paths != havoc_queued) {
-
+      if (has_smart_mut) {
+        fprintf(mut, "Queue entry %llu (return status %d):\n%s\n", havoc_queued, retval, mutation_infop);
+        ff_results += queued_paths - havoc_queued;
+      }
       if (perf_score <= havoc_max_mult * 100) {
 
         stage_max *= 2;
@@ -2223,15 +2278,20 @@ havoc_stage:
       havoc_queued = queued_paths;
 
     }
+    if (has_smart_mut)
+      ++ff_runs;
 
   }
+  fclose(mut);
 
   new_hit_cnt = queued_paths + unique_crashes;
 
   if (!splice_cycle) {
 
-    stage_finds[STAGE_HAVOC] += new_hit_cnt - orig_hit_cnt;
-    stage_cycles[STAGE_HAVOC] += stage_max;
+    stage_finds[STAGE_HAVOC] += new_hit_cnt - orig_hit_cnt - ff_results;
+    stage_cycles[STAGE_HAVOC] += stage_max - ff_runs;
+    stage_finds[STAGE_FORMATFUZZER] += ff_results;
+    stage_cycles[STAGE_FORMATFUZZER] += ff_runs;
 
   } else {
 

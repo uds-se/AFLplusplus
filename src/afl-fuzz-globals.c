@@ -155,6 +155,7 @@ volatile u8 stop_soon,                  /* Ctrl-C pressed?                  */
     clear_screen = 1;                   /* Window resized?                  */
 
 u32 queued_paths,                       /* Total number of queued testcases */
+    queued_parsed,                      /* Testcases parsed by FormatFuzzer */
     queued_variable,                    /* Testcases with variable behavior */
     queued_at_start,                    /* Total number of initial inputs   */
     queued_discovered,                  /* Items discovered during this run */
@@ -260,6 +261,7 @@ void (*generate_random_file)(unsigned char** file, unsigned* file_size);
 char *mutation_infop;
 size_t (*pre_save_handler)(u8 *data, size_t size, u8 **new_data);
 int (*post_load_handler)(u8 *data, size_t size, u8 **new_data, size_t* new_size);
+u8 stacking_mutation_mode = 0;
 
 /* Interesting values, as per config.h */
 

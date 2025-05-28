@@ -505,14 +505,6 @@ static void write_crash_readme(void) {
 
 }
 
-
-u8* get_rand_name(u8* fname) {
-  u8* tmp = alloc_printf("%s/dec_queue/%s", out_dir, strrchr(fname, '/') + 1);
-  return tmp;
-}
-
-
-
 /* Check if the result of an execve() during routine fuzzing is interesting,
    save or queue the input test case for further analysis if so. Returns 1 if
    entry is saved, 0 otherwise. */
@@ -594,10 +586,6 @@ u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
       ck_write(fd, new_data, new_size, gen_fn);
       close(fd);
       ck_free(gen_fn);
-    }
-
-    if (process_file) {
-      queue_top->validity = process_file(fn, get_rand_name(fn));
     }
 
     keeping = 1;
